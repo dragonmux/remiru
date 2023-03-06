@@ -7,8 +7,9 @@ __all__ = (
 	'PDIInterface',
 )
 
-PDI_EMPTY_BYTE = Const(0xeb1, 9)
+PDI_BREAK_BYTE = Const(0xbb1, 9)
 PDI_DELAY_BYTE = Const(0xdb1, 9)
+PDI_EMPTY_BYTE = Const(0xeb1, 9)
 
 class PDIInterface(Elaboratable):
 	def __init__(self):
@@ -19,9 +20,10 @@ class PDIInterface(Elaboratable):
 		self.jtagNeedsResponse = Signal()
 		self.jtagHasRequest = Signal()
 
-		self.pdiDataIn = Signal(8)
+		self.pdiDataIn = Signal(9)
 		self.pdiDataOut = Signal(8)
 		self.pdiBusy = Signal()
+		self.pdiParityError = Signal()
 		self.pdiDone = Signal()
 		self.pdiDoneAck = Signal()
 		self.pdiNextReady = Signal()
@@ -32,6 +34,7 @@ class PDIInterface(Elaboratable):
 		nextReady = Signal()
 		useRequest = Signal()
 		awaitingResponse = Signal()
+		parityError = Signal()
 		haveResponse = Signal()
 		responseAck = Signal()
 		pdiResponse = Signal(9)
@@ -44,6 +47,7 @@ class PDIInterface(Elaboratable):
 		# PDI controller, which exclusively sits on the main clock domain.
 		m.submodules += [
 			FFSynchronizer(self.pdiBusy, awaitingResponse, o_domain = 'jtag'),
+			FFSynchronizer(self.pdiParityError, parityError, o_domain = 'jtag'),
 			FFSynchronizer(self.pdiDone, haveResponse, o_domain = 'jtag'),
 			responseAckSync,
 			FFSynchronizer(nextReady, self.pdiNextReady, o_domain = 'sync'),
@@ -63,7 +67,9 @@ class PDIInterface(Elaboratable):
 
 		# If we have a response when the JTAG machinary asks for one, then we emit it, invalidating it.
 		# Else, if we are awaiting a response then we respond with the PDI "Delay Byte" response till we
-		# get one. Otherwise we must answer with the PDI "Empty Byte" response
+		# get one. Otherwise we must answer with the PDI "Empty Byte" response.
+		# If during reception the PDI controller sees invalid parity for the previous request,
+		# then a PDI "Break Byte" will be generated instead indicating the parity error.
 		with m.If(self.jtagNeedsResponse):
 			m.d.sync += useRequest.eq(~awaitingResponse)
 			with m.If(haveResponse):
@@ -71,6 +77,8 @@ class PDIInterface(Elaboratable):
 				m.d.comb += responseAck.eq(1)
 			with m.Elif(awaitingResponse):
 				m.d.comb += self.jtagDataOut.eq(PDI_DELAY_BYTE)
+			with m.Elif(parityError):
+				m.d.comb += self.jtagDataOut.eq(PDI_BREAK_BYTE)
 			with m.Else():
 				m.d.comb += self.jtagDataOut.eq(PDI_EMPTY_BYTE)
 
