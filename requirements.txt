@@ -1,1 +1,2 @@
 git+https://github.com/shrine-maiden-heavy-industries/torii-hdl.git@main#egg=torii
+git+https://github.com/shrine-maiden-heavy-industries/torii-boards.git@main#egg=torii-boards

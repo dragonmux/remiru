@@ -1,27 +1,25 @@
-from torii.platform.vendor.lattice_ice40 import LatticeICE40Platform
+# SPDX-License-Identifier: BSD-3-Clause
+from torii_boards.lattice.icebreaker import ICEBreakerPlatform
+from torii.platform.resources.interface import JTAGResource
 from torii.build import Resource, Subsignal, Pins, Clock, Attrs
 
 __all__ = (
 	'RemiruSoCGatewarePlatform',
 )
 
-class RemiruSoCGatewarePlatform(LatticeICE40Platform):
-	device = 'iCE40HX8K'
-	package = 'BG121'
-	toolchain = 'IceStorm'
+class RemiruSoCGatewarePlatform(ICEBreakerPlatform):
+	jtagIDCode = 0x00000001
 
-	default_clk = 'sys_clk'
-
-	resources = [
-		Resource(
-			'sys_clk', 0,
-			Pins('B6', dir = 'i', assert_width = 1),
-			Clock(12e6),
-			Attrs(GLOBAL = True, IO_STANDARD = 'SB_LVCMOS')
+	resources = ICEBreakerPlatform.resources + [
+		JTAGResource(
+			'jtag', 0,
+			tck = '7',
+			tms = '8',
+			tdi = '9',
+			tdo = '10',
+			conn = ('pmod', 0)
 		),
 	]
-
-	connectors = []
 
 	def build(self, elaboratable, name = 'top', build_dir = 'build', do_build = True,
 		program_opts = None, do_program = False, **kwargs):
