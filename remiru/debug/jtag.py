@@ -25,8 +25,8 @@ class JTAGController(Elaboratable):
 		# The data interface to the PDI controller
 		self.pdiDataIn = Signal(9)
 		self.pdiDataOut = Signal(9)
-		self.pdiRequest = Signal()
-		self.pdiRequestAck = Signal()
+		self.pdiHaveRequest = Signal()
+		self.pdiFetchResponse = Signal()
 
 		# Internal state for defining the JTAG ID code that will be emitted
 		self._jtagIDCode = jtagIDCode
@@ -61,12 +61,17 @@ class JTAGController(Elaboratable):
 		insn = Signal(4, decoder = JTAGInstruction)
 		insnShiftReg = Signal.like(insn)
 
+		# PDI request/response registers
+		pdiHaveRequest = Signal()
+
 		# Ensure the update signals are kept low at all times other than when they're pulsed by the JTAG TAP
 		m.d.comb += [
 			captureDR.eq(0),
 			captureIR.eq(0),
 			updateDR.eq(0),
 			updateIR.eq(0),
+			self.pdiFetchResponse.eq(0),
+			self.pdiHaveRequest.eq(0),
 		]
 
 		# Implement the Test Access Port (TAP) controller state machine per IEEE 1149.1 §6.1.1.1.a pg24
@@ -95,6 +100,8 @@ class JTAGController(Elaboratable):
 				with m.If(tms):
 					m.next = 'EXIT1-DR'
 				with m.Else():
+					# Pulse captureDR in this cycle, so that shift-in/out can begin in the next
+					m.d.comb += captureDR.eq(1)
 					m.d.jtag += shiftDR.eq(1)
 					m.next = 'SHIFT-DR'
 			with m.State('SHIFT-DR'):
@@ -178,6 +185,7 @@ class JTAGController(Elaboratable):
 				with m.Case(JTAGInstruction.idCode):
 					m.d.jtag += idCode.eq(self._jtagIDCode)
 				with m.Case(JTAGInstruction.pdi):
+					m.d.comb += self.pdiFetchResponse.eq(1)
 					m.d.jtag += pdiData.eq(self.pdiDataOut)
 		with m.Elif(shiftDR):
 			with m.Switch(insn):
@@ -201,11 +209,12 @@ class JTAGController(Elaboratable):
 				with m.Case(JTAGInstruction.pdi):
 					m.d.jtag += [
 						self.pdiDataIn.eq(pdiData),
-						self.pdiRequest.eq(1),
+						pdiHaveRequest.eq(1),
 					]
 
-		# Handling to clear the request signal when the controller acknowledges it
-		with m.If(self.pdiRequestAck):
-			m.d.jtag += self.pdiRequest.eq(0)
+		# This generates the have request pulse one cycle later so self.pdiDataIn is valid when it fires.
+		with m.If(pdiHaveRequest):
+			m.d.comb += self.pdiHaveRequest.eq(1)
+			m.d.jtag += pdiHaveRequest.eq(0)
 
 		return m

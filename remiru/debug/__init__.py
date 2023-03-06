@@ -3,6 +3,7 @@ from torii import Elaboratable, Module
 from torii.build import Platform
 
 from .jtag import JTAGController
+from .pdi.interface import PDIInterface
 
 __all__ = (
 	'DebugController',
@@ -16,8 +17,9 @@ __all__ = (
 class DebugController(Elaboratable):
 	def elaborate(self, platform: Platform):
 		m = Module()
-		# Instantiate the PDI controller and JTAG controller
+		# Instantiate the PDI controller, interface and JTAG controller
 		m.submodules.jtag = jtagController = JTAGController(jtagIDCode = platform.jtagIDCode)
+		m.submodules.iface = pdiInterface = PDIInterface()
 
 		# Connect the JTAG controller to the physical JTAG pins
 		jtag = platform.request('jtag')
@@ -29,8 +31,12 @@ class DebugController(Elaboratable):
 			jtag.tdo.oe.eq(1),
 		]
 
-		# The JTAG controller PDI signals are on the JTAG clock domain and
-		# must be FFSynchronizer'd over to the main CPU clock domain for the
-		# PDI controller, which exclusively sits on the main clock domain.
+		# Connect the PDI JTAG interface signals to the JTAG controller
+		m.d.comb += [
+			pdiInterface.jtagDataIn.eq(jtagController.pdiDataIn),
+			jtagController.pdiDataOut.eq(pdiInterface.jtagDataOut),
+			pdiInterface.jtagHasRequest.eq(jtagController.pdiHaveRequest),
+			pdiInterface.jtagNeedsResponse.eq(jtagController.pdiFetchResponse),
+		]
 
 		return m
