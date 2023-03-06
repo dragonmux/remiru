@@ -4,6 +4,7 @@ from torii.build import Platform
 
 from .jtag import JTAGController
 from .pdi.interface import PDIInterface
+from .pdi.controller import PDIController
 
 __all__ = (
 	'DebugController',
@@ -20,6 +21,7 @@ class DebugController(Elaboratable):
 		# Instantiate the PDI controller, interface and JTAG controller
 		m.submodules.jtag = jtagController = JTAGController(jtagIDCode = platform.jtagIDCode)
 		m.submodules.iface = pdiInterface = PDIInterface()
+		m.submodules.pdi = pdiController = PDIController()
 
 		# Connect the JTAG controller to the physical JTAG pins
 		jtag = platform.request('jtag')
@@ -37,6 +39,17 @@ class DebugController(Elaboratable):
 			jtagController.pdiDataOut.eq(pdiInterface.jtagDataOut),
 			pdiInterface.jtagHasRequest.eq(jtagController.pdiHaveRequest),
 			pdiInterface.jtagNeedsResponse.eq(jtagController.pdiFetchResponse),
+		]
+
+		# Connect the PDI <=> JTAG interface up to the PDI controller
+		m.d.comb += [
+			pdiController.dataIn.eq(pdiInterface.pdiDataIn),
+			pdiInterface.pdiDataOut.eq(pdiController.dataOut),
+			pdiInterface.pdiBusy.eq(pdiController.busy),
+			pdiInterface.pdiParityError.eq(pdiController.parityError),
+			pdiInterface.pdiDone.eq(pdiController.done),
+			pdiController.doneAck.eq(pdiInterface.pdiDoneAck),
+			pdiController.nextReady.eq(pdiInterface.pdiNextReady),
 		]
 
 		return m
