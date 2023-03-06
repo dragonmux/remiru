@@ -7,6 +7,7 @@ __all__ = (
 )
 
 PDI_EMPTY_BYTE = Const(0xeb1, 9)
+PDI_DELAY_BYTE = Const(0xdb1, 9)
 
 class PDIInterface(Elaboratable):
 	def __init__(self):
@@ -28,14 +29,18 @@ class PDIInterface(Elaboratable):
 		# PDI controller, which exclusively sits on the main clock domain.
 
 		haveResponse = Signal()
+		awaitingResponse = Signal()
 		pdiResponse = Signal(9)
 
-		# If we have a response when the JTAG machinary asks for one, then we emit it, invalidating it
-		# otherwise we must answer with the PDI "Empty Byte" response
+		# If we have a response when the JTAG machinary asks for one, then we emit it, invalidating it.
+		# Else, if we are awaiting a response then we respond with the PDI "Delay Byte" response till we
+		# get one. Otherwise we must answer with the PDI "Empty Byte" response
 		with m.If(self.jtagNeedsResponse):
 			with m.If(haveResponse):
 				m.d.comb += self.jtagDataOut.eq(pdiResponse)
 				m.d.jtag += haveResponse.eq(0)
+			with m.Elif(awaitingResponse):
+				m.d.comb += self.jtagDataOut.eq(PDI_DELAY_BYTE)
 			with m.Else():
 				m.d.comb += self.jtagDataOut.eq(PDI_EMPTY_BYTE)
 
