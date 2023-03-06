@@ -34,7 +34,7 @@ class PDIInterface(Elaboratable):
 		awaitingResponse = Signal()
 		haveResponse = Signal()
 		responseAck = Signal()
-		#pdiResponse = Signal(9)
+		pdiResponse = Signal(9)
 		jtagResponse = Signal(9)
 
 		responseAckSync = PulseSynchronizer(i_domain = 'jtag', o_domain = 'sync')
@@ -48,10 +48,15 @@ class PDIInterface(Elaboratable):
 			responseAckSync,
 			FFSynchronizer(nextReady, self.pdiNextReady, o_domain = 'sync'),
 			FFSynchronizer(self.jtagDataIn, self.pdiDataIn, o_domain = 'sync'),
-			FFSynchronizer(self.pdiDataOut, jtagResponse, o_domain = 'jtag'),
+			FFSynchronizer(pdiResponse, jtagResponse, o_domain = 'jtag'),
 		]
 
 		m.d.comb += [
+			# Copy the data to send into our pdiResponse
+			pdiResponse[0:8].eq(self.pdiDataOut),
+			# Compute its parity
+			pdiResponse[8].eq(self.pdiDataOut.xor()),
+			# Connect up the response acknowledgement signals thorugh their CDC sync
 			responseAckSync.i.eq(responseAck),
 			self.pdiDoneAck.eq(responseAckSync.o),
 		]
