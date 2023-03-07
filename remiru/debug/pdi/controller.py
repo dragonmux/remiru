@@ -237,6 +237,7 @@ class PDIController(Elaboratable):
 					with m.Case(3):
 						m.d.sync += repCount.eq(Cat(repeatData[24:32],
 							repeatData[16:24], repeatData[8:16], repeatData[0:8]))
+				m.next = 'IDLE'
 
 			with m.State('KEY'):
 				# KEY instructions imply 8 bytes to read and never write any bytes
