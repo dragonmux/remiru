@@ -120,9 +120,12 @@ class PDIController(Elaboratable):
 			with m.State('DECODE'):
 				# Decode based on the opcode
 				with m.Switch(opcode):
+					# If we're asked to update counts and the IDLE opcode is selected,
+					# clear the repeat counter and be done
 					with m.Case(PDIOpcodes.IDLE):
 						m.d.sync += repCount.eq(0)
 						m.next = 'IDLE'
+					# The next 4 cases handle the PDI debug bus load/store instructions
 					with m.Case(PDIOpcodes.LDS):
 						m.next = 'LDS'
 					with m.Case(PDIOpcodes.LD):
@@ -131,6 +134,11 @@ class PDIController(Elaboratable):
 						m.next = 'STS'
 					with m.Case(PDIOpcodes.ST):
 						m.next = 'ST'
+					# The next 2 cases handle the PDI controller register load/store instructions
+					with m.Case(PDIOpcodes.LDCS):
+						m.next = 'LDCS'
+					with m.Case(PDIOpcodes.STCS):
+						m.next = 'STCS'
 
 			with m.State('LDS'):
 				# LDS instructions specify how many bytes to write in sizeA
@@ -140,7 +148,6 @@ class PDIController(Elaboratable):
 					writeCount.eq(sizeA),
 				]
 				m.next = 'HANDLE-REPEAT'
-
 			with m.State('LD'):
 				# LD instructions specify how many bytes to read in sizeB
 				# the instruction does not write any bytes
@@ -158,13 +165,27 @@ class PDIController(Elaboratable):
 					writeCount.eq(sizeA + sizeB),
 				]
 				m.next = 'HANDLE-REPEAT'
-
 			with m.State('ST'):
 				# ST instructions specify how many bytes to write in sizeB
 				# the instruction does not read any bytes
 				m.d.sync += [
 					readCount.eq(0),
 					writeCount.eq(sizeB),
+				]
+				m.next = 'HANDLE-REPEAT'
+
+			with m.State('LDCS'):
+				# LDCS instructions only read a single byte and never write any bytes
+				m.d.sync += [
+					readCount.eq(1),
+					writeCount.eq(0),
+				]
+				m.next = 'HANDLE-REPEAT'
+			with m.State('STCS'):
+				# STCS instructions only write a single byte and never read any bytes
+				m.d.sync += [
+					readCount.eq(0),
+					writeCount.eq(1),
 				]
 				m.next = 'HANDLE-REPEAT'
 
