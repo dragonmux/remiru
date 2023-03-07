@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-from torii import Elaboratable, Module, Signal
+from torii import Elaboratable, Module, Signal, Cat
 from torii.build import Platform
 from enum import IntEnum
 
@@ -37,7 +37,13 @@ class PDIController(Elaboratable):
 		writeCount = Signal(32)
 		repCount = Signal(32)
 		updateCounts = Signal()
+		updateRepeat = Signal()
 		newCommand = Signal()
+
+		m.d.comb += [
+			updateCounts.eq(0),
+			updateRepeat.eq(0),
+		]
 
 		# This FSM implements handling getting data into and out of the PDI controller
 		with m.FSM(name = 'pdiFSM'):
@@ -100,7 +106,8 @@ class PDIController(Elaboratable):
 				pass
 
 			with m.State('HANDLE-WRITE'):
-				pass
+				with m.If(opcode == PDIOpcodes.REPEAT):
+					m.d.comb += updateRepeat.eq(1)
 
 		sizeA = Signal(5)
 		sizeB = Signal(5)
@@ -139,6 +146,12 @@ class PDIController(Elaboratable):
 						m.next = 'LDCS'
 					with m.Case(PDIOpcodes.STCS):
 						m.next = 'STCS'
+					# The repeat instruction is a special-case and must ignore the repeat counter
+					with m.Case(PDIOpcodes.REPEAT):
+						m.next = 'REPEAT'
+					# The key instruction is a special-case and must clear the repeat counter
+					with m.Case(PDIOpcodes.KEY):
+						m.next = 'KEY'
 
 			with m.State('LDS'):
 				# LDS instructions specify how many bytes to write in sizeA
@@ -194,6 +207,43 @@ class PDIController(Elaboratable):
 				# is set up for new execution
 				with m.If((repCount != 0) & ~newCommand):
 					m.d.sync += repCount.eq(repCount - 1)
+				m.next = 'IDLE'
+
+			with m.State('REPEAT'):
+				# REPEAT instructions specify how many bytes to write in sizeB
+				# the instruction does not read any bytes
+				m.d.sync += [
+					readCount.eq(0),
+					writeCount.eq(sizeB),
+				]
+				m.next = 'CAPTURE-REPEAT'
+			with m.State('CAPTURE-REPEAT'):
+				# Each time the control state machine indicates it got another byte for the repeat count,
+				# shift that into the bottom of the repeatData register until we satisfy the write count
+				with m.If(updateRepeat):
+					m.d.sync += repeatData.eq(Cat(data, repeatData[0:24]))
+					with m.If(writeCount == 1):
+						m.next = 'UPDATE-REPEAT'
+			with m.State('UPDATE-REPEAT'):
+				# Depending on how many bytes were indicated for the repeat count, load the repeat counter
+				# appropriately, fixing the byte order (repeatData is loaded "backwards")
+				with m.Switch(args[0:2]):
+					with m.Case(0):
+						m.d.sync += repCount.eq(Cat(repeatData[0:8]))
+					with m.Case(1):
+						m.d.sync += repCount.eq(Cat(repeatData[8:16], repeatData[0:8]))
+					with m.Case(2):
+						m.d.sync += repCount.eq(Cat(repeatData[16:24], repeatData[8:16], repeatData[0:8]))
+					with m.Case(3):
+						m.d.sync += repCount.eq(Cat(repeatData[24:32],
+							repeatData[16:24], repeatData[8:16], repeatData[0:8]))
+
+			with m.State('KEY'):
+				# KEY instructions imply 8 bytes to write and never read any bytes
+				m.d.sync += [
+					readCount.eq(0),
+					writeCount.eq(8),
+				]
 				m.next = 'IDLE'
 
 		return m
