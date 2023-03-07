@@ -37,6 +37,7 @@ class PDIController(Elaboratable):
 		writeCount = Signal(32)
 		repCount = Signal(32)
 		updateCounts = Signal()
+		newCommand = Signal()
 
 		# This FSM implements handling getting data into and out of the PDI controller
 		with m.FSM(name = 'pdiFSM'):
@@ -90,6 +91,7 @@ class PDIController(Elaboratable):
 				m.d.sync += [
 					opcode.eq(data[5:8]),
 					args.eq(data[0:4]),
+					newCommand.eq(1),
 				]
 				m.d.comb += updateCounts.eq(1)
 				m.next = 'IDLE'
@@ -121,5 +123,34 @@ class PDIController(Elaboratable):
 					with m.Case(PDIOpcodes.IDLE):
 						m.d.sync += repCount.eq(0)
 						m.next = 'IDLE'
+					with m.Case(PDIOpcodes.LDS):
+						m.next = 'LDS'
+					with m.Case(PDIOpcodes.LD):
+						m.next = 'LD'
+
+			with m.State('LDS'):
+				# LDS instructions specify how many bytes to write in sizeA
+				# and how many bytes to read in sizeB
+				m.d.sync += [
+					readCount.eq(sizeB),
+					writeCount.eq(sizeA),
+				]
+				m.next = 'HANDLE-REPEAT'
+
+			with m.State('LD'):
+				# LD instructions specify how many bytes to read in sizeB
+				# the instruction does not write any bytes
+				m.d.sync += [
+					readCount.eq(sizeB),
+					writeCount.eq(0),
+				]
+				m.next = 'HANDLE-REPEAT'
+
+			with m.State('HANDLE-REPEAT'):
+				# If a repeat count is in play, then we need to decrement it now the instruction
+				# is set up for new execution
+				with m.If((repCount != 0) & ~newCommand):
+					m.d.sync += repCount.eq(repCount - 1)
+				m.next = 'IDLE'
 
 		return m
