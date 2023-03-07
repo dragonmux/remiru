@@ -199,47 +199,47 @@ class PDIController(Elaboratable):
 						# LDS instructions specify how many bytes to read in sizeA
 						# and how many bytes to write in sizeB
 						m.d.sync += [
-							writeCount.eq(sizeB),
 							readCount.eq(sizeA),
+							writeCount.eq(sizeB),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.LD):
 						# LD instructions specify how many bytes to write in sizeB
 						# the instruction does not read any bytes
 						m.d.sync += [
-							writeCount.eq(sizeB),
 							readCount.eq(0),
+							writeCount.eq(sizeB),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.STS):
 						# STS instructions specify how many bytes to read in sizeA + sizeB
 						# the instruction does not write any bytes
 						m.d.sync += [
-							writeCount.eq(0),
 							readCount.eq(sizeA + sizeB),
+							writeCount.eq(0),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.ST):
 						# ST instructions specify how many bytes to read in sizeB
 						# the instruction does not write any bytes
 						m.d.sync += [
-							writeCount.eq(0),
 							readCount.eq(sizeB),
+							writeCount.eq(0),
 						]
 						m.next = 'HANDLE-REPEAT'
 					# The next 2 cases handle the PDI controller register load/store instructions
 					with m.Case(PDIOpcodes.LDCS):
 						# LDCS instructions only write a single byte and never read any bytes
 						m.d.sync += [
-							writeCount.eq(1),
 							readCount.eq(0),
+							writeCount.eq(1),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.STCS):
 						# STCS instructions only read a single byte and never write any bytes
 						m.d.sync += [
-							writeCount.eq(0),
 							readCount.eq(1),
+							writeCount.eq(0),
 						]
 						m.next = 'HANDLE-REPEAT'
 					# The repeat instruction is a special-case and must ignore the repeat counter
@@ -247,16 +247,16 @@ class PDIController(Elaboratable):
 						# REPEAT instructions specify how many bytes to read in sizeB
 						# the instruction does not write any bytes
 						m.d.sync += [
-							writeCount.eq(0),
 							readCount.eq(sizeB),
+							writeCount.eq(0),
 						]
 						m.next = 'CAPTURE-REPEAT'
 					# The key instruction is a special-case and must clear the repeat counter
 					with m.Case(PDIOpcodes.KEY):
 						# KEY instructions imply 8 bytes to read and never write any bytes
 						m.d.sync += [
-							writeCount.eq(0),
 							readCount.eq(8),
+							writeCount.eq(0),
 							repCount.eq(0),
 						]
 						m.next = 'IDLE'
