@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: BSD-3-Clause
-from torii import Elaboratable, Module, Signal, Cat
+from torii import Elaboratable, Module, Signal, Cat, Array
 from torii.build import Platform
 from enum import IntEnum
 
@@ -24,6 +24,14 @@ class PDIController(Elaboratable):
 		self.done = Signal()
 		self.doneAck = Signal()
 		self.nextReady = Signal()
+
+		self.pdiRegs = Array((
+			Signal(8, name = 'pdiStatus'), # r0
+			Signal(8, name = 'pdiSysReset'), # r1
+			Signal(8, name = 'pdiControl'), # r2
+			Signal(8, name = 'pdiDebugStatus'), # r3
+			Signal(8, name = 'pdiDebugControl'), # r4
+		))
 
 	def elaborate(self, platform: Platform):
 		m = Module()
@@ -281,6 +289,17 @@ class PDIController(Elaboratable):
 						m.d.sync += repCount.eq(Cat(repeatData[24:32],
 							repeatData[16:24], repeatData[8:16], repeatData[0:8]))
 				m.next = 'IDLE'
+
+		# This next block of logic handles dispatching reads and writes for various instructions
+		# to the PDI correct components on the appropriate cycles
+		with m.Switch(opcode):
+			with m.Case(PDIOpcodes.LDCS):
+				with m.If(handleWrite):
+					m.d.sync += self.dataOut.eq(self.pdiRegs[args])
+					m.d.comb += writeComplete.eq(1)
+			with m.Case(PDIOpcodes.STCS):
+				with m.If(handleRead):
+					m.d.sync += self.pdiRegs[args].eq(data)
 
 		# When the JTAG interface indicates it finished with the prepared data, clear done
 		with m.If(self.doneAck):
