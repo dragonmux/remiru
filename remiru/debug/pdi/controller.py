@@ -40,15 +40,24 @@ class PDIController(Elaboratable):
 		updateRepeat = Signal()
 		updateComplete = Signal()
 		newCommand = Signal()
+		handleRead = Signal()
+		handleWrite = Signal()
+		writeComplete = Signal()
 
 		m.d.comb += [
 			updateCounts.eq(0),
 			updateRepeat.eq(0),
 			updateComplete.eq(0),
+			writeComplete.eq(0),
 		]
 
 		# This FSM implements handling getting data into and out of the PDI controller
-		with m.FSM(name = 'pdiFSM'):
+		with m.FSM(name = 'pdiFSM') as pdiFSM:
+			m.d.comb += [
+				handleRead.eq(pdiFSM.ongoing('HANDLE-READ')),
+				handleWrite.eq(pdiFSM.ongoing('HANDLE-WRITE')),
+			]
+
 			with m.State('RESET'):
 				# When requested, quick-reset the state machine
 				m.d.sync += [
@@ -121,11 +130,12 @@ class PDIController(Elaboratable):
 				m.next = 'UPDATE-STATE'
 
 			with m.State('HANDLE-WRITE'):
-				# Route a byte from an appropriate part of the PDI controller to the JTAG-PDI bus
-				m.d.sync += [
-					writeCount.eq(writeCount - 1),
-				]
-				m.next = 'UPDATE-STATE'
+				with m.If(writeComplete):
+					# Route a byte from an appropriate part of the PDI controller to the JTAG-PDI bus
+					m.d.sync += [
+						writeCount.eq(writeCount - 1),
+					]
+					m.next = 'UPDATE-STATE'
 
 			with m.State('UPDATE-STATE'):
 				# If the read and write counters are exhausted, check if the data phase should repeat
@@ -271,5 +281,12 @@ class PDIController(Elaboratable):
 						m.d.sync += repCount.eq(Cat(repeatData[24:32],
 							repeatData[16:24], repeatData[8:16], repeatData[0:8]))
 				m.next = 'IDLE'
+
+		# When the JTAG interface indicates it finished with the prepared data, clear done
+		with m.If(self.doneAck):
+			m.d.sync += self.done.eq(0)
+		# If we indicate we're done setting up the data to write, set done
+		with m.Elif(writeComplete):
+			m.d.sync += self.done.eq(1)
 
 		return m
