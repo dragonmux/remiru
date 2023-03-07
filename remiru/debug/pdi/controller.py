@@ -86,6 +86,8 @@ class PDIController(Elaboratable):
 					m.next = 'HANDLE-WRITE'
 				# Else we must have more data to read, so dispatch to HANDLE-READ
 				with m.Else():
+					# Unmark the controller as busy so we can get the next byte
+					m.d.sync += self.busy.eq(0)
 					m.next = 'HANDLE-READ'
 
 				# If we didn't get a parity error, copy the data into the internal data register
