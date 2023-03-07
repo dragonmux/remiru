@@ -33,9 +33,9 @@ class PDIController(Elaboratable):
 		data = Signal(8)
 		opcode = Signal(PDIOpcodes)
 		args = Signal(4)
-		readCount = Signal(32)
-		writeCount = Signal(32)
-		repCount = Signal(32)
+		readCount = Signal(32) # Counter for the number of bytes to read from the PDI interface
+		writeCount = Signal(32) # Counter for the number of bytes to write to the PDI interface
+		repCount = Signal(32) # Counter for the number of times the current instruction should be repeated
 		updateCounts = Signal()
 		updateRepeat = Signal()
 		newCommand = Signal()
@@ -103,11 +103,11 @@ class PDIController(Elaboratable):
 				m.next = 'IDLE'
 
 			with m.State('HANDLE-READ'):
-				pass
-
-			with m.State('HANDLE-WRITE'):
 				with m.If(opcode == PDIOpcodes.REPEAT):
 					m.d.comb += updateRepeat.eq(1)
+
+			with m.State('HANDLE-WRITE'):
+				pass
 
 		sizeA = Signal(5)
 		sizeB = Signal(5)
@@ -154,51 +154,51 @@ class PDIController(Elaboratable):
 						m.next = 'KEY'
 
 			with m.State('LDS'):
-				# LDS instructions specify how many bytes to write in sizeA
-				# and how many bytes to read in sizeB
+				# LDS instructions specify how many bytes to read in sizeA
+				# and how many bytes to write in sizeB
 				m.d.sync += [
-					readCount.eq(sizeB),
-					writeCount.eq(sizeA),
+					writeCount.eq(sizeB),
+					readCount.eq(sizeA),
 				]
 				m.next = 'HANDLE-REPEAT'
 			with m.State('LD'):
-				# LD instructions specify how many bytes to read in sizeB
-				# the instruction does not write any bytes
+				# LD instructions specify how many bytes to write in sizeB
+				# the instruction does not read any bytes
 				m.d.sync += [
-					readCount.eq(sizeB),
-					writeCount.eq(0),
+					writeCount.eq(sizeB),
+					readCount.eq(0),
 				]
 				m.next = 'HANDLE-REPEAT'
 
 			with m.State('STS'):
-				# STS instructions specify how many bytes to write in sizeA + sizeB
-				# the instruction does not read any bytes
+				# STS instructions specify how many bytes to read in sizeA + sizeB
+				# the instruction does not write any bytes
 				m.d.sync += [
-					readCount.eq(0),
-					writeCount.eq(sizeA + sizeB),
+					writeCount.eq(0),
+					readCount.eq(sizeA + sizeB),
 				]
 				m.next = 'HANDLE-REPEAT'
 			with m.State('ST'):
-				# ST instructions specify how many bytes to write in sizeB
-				# the instruction does not read any bytes
+				# ST instructions specify how many bytes to read in sizeB
+				# the instruction does not write any bytes
 				m.d.sync += [
-					readCount.eq(0),
-					writeCount.eq(sizeB),
+					writeCount.eq(0),
+					readCount.eq(sizeB),
 				]
 				m.next = 'HANDLE-REPEAT'
 
 			with m.State('LDCS'):
-				# LDCS instructions only read a single byte and never write any bytes
+				# LDCS instructions only write a single byte and never read any bytes
 				m.d.sync += [
-					readCount.eq(1),
-					writeCount.eq(0),
+					writeCount.eq(1),
+					readCount.eq(0),
 				]
 				m.next = 'HANDLE-REPEAT'
 			with m.State('STCS'):
-				# STCS instructions only write a single byte and never read any bytes
+				# STCS instructions only read a single byte and never write any bytes
 				m.d.sync += [
-					readCount.eq(0),
-					writeCount.eq(1),
+					writeCount.eq(0),
+					readCount.eq(1),
 				]
 				m.next = 'HANDLE-REPEAT'
 
@@ -210,19 +210,19 @@ class PDIController(Elaboratable):
 				m.next = 'IDLE'
 
 			with m.State('REPEAT'):
-				# REPEAT instructions specify how many bytes to write in sizeB
-				# the instruction does not read any bytes
+				# REPEAT instructions specify how many bytes to read in sizeB
+				# the instruction does not write any bytes
 				m.d.sync += [
-					readCount.eq(0),
-					writeCount.eq(sizeB),
+					writeCount.eq(0),
+					readCount.eq(sizeB),
 				]
 				m.next = 'CAPTURE-REPEAT'
 			with m.State('CAPTURE-REPEAT'):
 				# Each time the control state machine indicates it got another byte for the repeat count,
-				# shift that into the bottom of the repeatData register until we satisfy the write count
+				# shift that into the bottom of the repeatData register until we satisfy the read count
 				with m.If(updateRepeat):
 					m.d.sync += repeatData.eq(Cat(data, repeatData[0:24]))
-					with m.If(writeCount == 1):
+					with m.If(readCount == 1):
 						m.next = 'UPDATE-REPEAT'
 			with m.State('UPDATE-REPEAT'):
 				# Depending on how many bytes were indicated for the repeat count, load the repeat counter
@@ -239,10 +239,12 @@ class PDIController(Elaboratable):
 							repeatData[16:24], repeatData[8:16], repeatData[0:8]))
 
 			with m.State('KEY'):
-				# KEY instructions imply 8 bytes to write and never read any bytes
+				# KEY instructions imply 8 bytes to read and never write any bytes
 				m.d.sync += [
-					readCount.eq(0),
-					writeCount.eq(8),
+					writeCount.eq(0),
+					readCount.eq(8),
+					# KEY instructions must clear the repeat counter
+					repCount.eq(0),
 				]
 				m.next = 'IDLE'
 
