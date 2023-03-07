@@ -33,8 +33,8 @@ class PDIController(Elaboratable):
 		data = Signal(8)
 		opcode = Signal(PDIOpcodes)
 		args = Signal(4)
-		readCount = Signal(32) # Counter for the number of bytes to read from the PDI interface
-		writeCount = Signal(32) # Counter for the number of bytes to write to the PDI interface
+		readCount = Signal(4) # Counter for the number of bytes to read from the PDI interface
+		writeCount = Signal(4) # Counter for the number of bytes to write to the PDI interface
 		repCount = Signal(32) # Counter for the number of times the current instruction should be repeated
 		updateCounts = Signal()
 		updateRepeat = Signal()
@@ -109,8 +109,8 @@ class PDIController(Elaboratable):
 			with m.State('HANDLE-WRITE'):
 				pass
 
-		sizeA = Signal(5)
-		sizeB = Signal(5)
+		sizeA = Signal(3)
+		sizeB = Signal(3)
 		repeatData = Signal(32)
 
 		m.d.comb += [
