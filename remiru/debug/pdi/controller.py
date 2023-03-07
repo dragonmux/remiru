@@ -127,6 +127,10 @@ class PDIController(Elaboratable):
 						m.next = 'LDS'
 					with m.Case(PDIOpcodes.LD):
 						m.next = 'LD'
+					with m.Case(PDIOpcodes.STS):
+						m.next = 'STS'
+					with m.Case(PDIOpcodes.ST):
+						m.next = 'ST'
 
 			with m.State('LDS'):
 				# LDS instructions specify how many bytes to write in sizeA
@@ -143,6 +147,24 @@ class PDIController(Elaboratable):
 				m.d.sync += [
 					readCount.eq(sizeB),
 					writeCount.eq(0),
+				]
+				m.next = 'HANDLE-REPEAT'
+
+			with m.State('STS'):
+				# STS instructions specify how many bytes to write in sizeA + sizeB
+				# the instruction does not read any bytes
+				m.d.sync += [
+					readCount.eq(0),
+					writeCount.eq(sizeA + sizeB),
+				]
+				m.next = 'HANDLE-REPEAT'
+
+			with m.State('ST'):
+				# ST instructions specify how many bytes to write in sizeB
+				# the instruction does not read any bytes
+				m.d.sync += [
+					readCount.eq(0),
+					writeCount.eq(sizeB),
 				]
 				m.next = 'HANDLE-REPEAT'
 
