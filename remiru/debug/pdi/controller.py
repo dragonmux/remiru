@@ -38,11 +38,13 @@ class PDIController(Elaboratable):
 		repCount = Signal(32) # Counter for the number of times the current instruction should be repeated
 		updateCounts = Signal()
 		updateRepeat = Signal()
+		updateComplete = Signal()
 		newCommand = Signal()
 
 		m.d.comb += [
 			updateCounts.eq(0),
 			updateRepeat.eq(0),
+			updateComplete.eq(0),
 		]
 
 		# This FSM implements handling getting data into and out of the PDI controller
@@ -55,6 +57,7 @@ class PDIController(Elaboratable):
 					readCount.eq(0),
 					writeCount.eq(0),
 					repCount.eq(0),
+					self.busy.eq(0),
 				]
 				m.next = 'IDLE'
 
@@ -62,6 +65,10 @@ class PDIController(Elaboratable):
 				# If the interface signals a new byte is ready, parity check it and then go into the instruction engine
 				with m.If(self.nextReady):
 					m.next = 'PARITY-CHECK'
+
+				# If the counter update indicates complete unmark the controller as being busy
+				with m.If(updateComplete):
+					m.d.sync += self.busy.eq(0)
 
 			with m.State('PARITY-CHECK'):
 				# With the parity computed, set up the parity error signal and mark us busy
@@ -83,8 +90,6 @@ class PDIController(Elaboratable):
 					m.next = 'DECODE-INSN'
 				# Else if we must have more data to read, so dispatch to HANDLE-READ
 				with m.Elif(readCount != 0):
-					# Unmark the controller as busy so we can get the next byte
-					m.d.sync += self.busy.eq(0)
 					m.next = 'HANDLE-READ'
 				# Else we have more data to write dispatch to HANDLE-WRITE
 				with m.Else():
@@ -131,7 +136,13 @@ class PDIController(Elaboratable):
 						m.d.comb += updateCounts.eq(1)
 					# We're done with the instruction, so put the PDI controller back in full idle
 					with m.Else():
-						m.d.sync += opcode.eq(PDIOpcodes.IDLE)
+						m.d.sync += [
+							opcode.eq(PDIOpcodes.IDLE),
+							self.busy.eq(0),
+						]
+				# If we have no counter updates to do, reset the busy signal
+				with m.Else():
+					m.d.sync += self.busy.eq(0)
 				# Wait for the next byte to be received
 				m.next = 'IDLE'
 
@@ -144,7 +155,14 @@ class PDIController(Elaboratable):
 			sizeB.eq(args[0:2] + 1),
 		]
 
-		with m.FSM(name = 'insnFSM'):
+		updateWasOngoing = Signal()
+
+		with m.FSM(name = 'insnFSM') as insnFSM:
+			# Generate a signal representing if we've been doing an update
+			m.d.sync += updateWasOngoing.eq(~insnFSM.ongoing('IDLE'))
+			# and then a strobe for when that update completes and we go back to idle
+			m.d.comb += updateComplete.eq(insnFSM.ongoing('IDLE') & updateWasOngoing)
+
 			with m.State('IDLE'):
 				# If the main FSM asks us to update counts, then dispatch to the instruction decoder
 				with m.If(updateCounts):
