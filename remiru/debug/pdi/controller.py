@@ -81,14 +81,14 @@ class PDIController(Elaboratable):
 				# Else if we're in an idle state, treat the new byte as an opcode
 				with m.Elif(opcode == PDIOpcodes.IDLE):
 					m.next = 'DECODE-INSN'
-				# Else if we have more data to write dispatch to HANDLE-WRITE
-				with m.Elif(writeCount != 0):
-					m.next = 'HANDLE-WRITE'
-				# Else we must have more data to read, so dispatch to HANDLE-READ
-				with m.Else():
+				# Else if we must have more data to read, so dispatch to HANDLE-READ
+				with m.Elif(readCount != 0):
 					# Unmark the controller as busy so we can get the next byte
 					m.d.sync += self.busy.eq(0)
 					m.next = 'HANDLE-READ'
+				# Else we have more data to write dispatch to HANDLE-WRITE
+				with m.Else():
+					m.next = 'HANDLE-WRITE'
 
 				# If we didn't get a parity error, copy the data into the internal data register
 				with m.If(~self.parityError):
@@ -101,15 +101,39 @@ class PDIController(Elaboratable):
 					args.eq(data[0:4]),
 					newCommand.eq(1),
 				]
+				# Trigger an update of the read/write/repeat counters
 				m.d.comb += updateCounts.eq(1)
 				m.next = 'IDLE'
 
 			with m.State('HANDLE-READ'):
+				# Route the byte consumed from the JTAG-PDI bus to the appropriate part of the PDI controller
+				m.d.sync += [
+					readCount.eq(readCount - 1),
+				]
+
 				with m.If(opcode == PDIOpcodes.REPEAT):
 					m.d.comb += updateRepeat.eq(1)
+				m.next = 'UPDATE-STATE'
 
 			with m.State('HANDLE-WRITE'):
-				pass
+				# Route a byte from an appropriate part of the PDI controller to the JTAG-PDI bus
+				m.d.sync += [
+					writeCount.eq(writeCount - 1),
+				]
+				m.next = 'UPDATE-STATE'
+
+			with m.State('UPDATE-STATE'):
+				# If the read and write counters are exhausted, check if the data phase should repeat
+				with m.If((writeCount == 0) & (readCount == 0)):
+					# Trigger an update of the read/write/repeat counters on repeat
+					with m.If(repCount != 0):
+						m.d.sync += newCommand.eq(0)
+						m.d.comb += updateCounts.eq(1)
+					# We're done with the instruction, so put the PDI controller back in full idle
+					with m.Else():
+						m.d.sync += opcode.eq(PDIOpcodes.IDLE)
+				# Wait for the next byte to be received
+				m.next = 'IDLE'
 
 		sizeA = Signal(3)
 		sizeB = Signal(3)
