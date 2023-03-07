@@ -51,6 +51,10 @@ class PDIController(Elaboratable):
 		handleRead = Signal()
 		handleWrite = Signal()
 		writeComplete = Signal()
+		address = Signal(32)
+
+		addressSize = Signal(3)
+		addressBytes = Array((address[0:8], address[8:16], address[16:24], address[24:32]))
 
 		m.d.comb += [
 			updateCounts.eq(0),
@@ -75,6 +79,7 @@ class PDIController(Elaboratable):
 					writeCount.eq(0),
 					repCount.eq(0),
 					self.busy.eq(0),
+					addressSize.eq(0),
 				]
 				m.next = 'IDLE'
 
@@ -158,6 +163,8 @@ class PDIController(Elaboratable):
 							opcode.eq(PDIOpcodes.IDLE),
 							self.busy.eq(0),
 						]
+					# Reset counters used to read things into the right bytes of registers
+					m.d.sync += addressSize.eq(0)
 				# If we have no counter updates to do, reset the busy signal
 				with m.Else():
 					m.d.sync += self.busy.eq(0)
@@ -201,6 +208,7 @@ class PDIController(Elaboratable):
 						m.d.sync += [
 							readCount.eq(sizeA),
 							writeCount.eq(sizeB),
+							address.eq(0),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.LD):
@@ -217,6 +225,7 @@ class PDIController(Elaboratable):
 						m.d.sync += [
 							readCount.eq(sizeA + sizeB),
 							writeCount.eq(0),
+							address.eq(0),
 						]
 						m.next = 'HANDLE-REPEAT'
 					with m.Case(PDIOpcodes.ST):
@@ -293,6 +302,15 @@ class PDIController(Elaboratable):
 		# This next block of logic handles dispatching reads and writes for various instructions
 		# to the PDI correct components on the appropriate cycles
 		with m.Switch(opcode):
+			with m.Case(PDIOpcodes.LDS, PDIOpcodes.STS):
+				with m.If(handleRead):
+					# Start by reading in the address bytes for the acccess
+					with m.If(addressSize != sizeA):
+						m.d.sync += [
+							addressBytes[addressSize].eq(data),
+							addressSize.eq(addressSize + 1),
+						]
+
 			with m.Case(PDIOpcodes.LDCS):
 				with m.If(handleWrite):
 					m.d.sync += self.dataOut.eq(self.pdiRegs[args])
