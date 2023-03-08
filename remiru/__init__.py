@@ -31,8 +31,8 @@ def cli():
 	args = parser.parse_args()
 
 	if args.action == 'sim':
-		# from arachne.core.sim import run_sims
-		# run_sims(pkg = 'remiru/sim', result_dir = 'build')
+		from .sim.framework import runSims
+		runSims(pkg = 'remiru/sim', result_dir = 'build')
 		return 0
 	elif args.action == 'build':
 		build(args.buildAs)
