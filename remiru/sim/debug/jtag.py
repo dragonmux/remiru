@@ -2,7 +2,7 @@
 from ..framework import simCase
 from torii.sim import Simulator, Settle, Delay
 
-from ...debug.jtag import JTAGController
+from ...debug.jtag import JTAGController, JTAGInstruction
 
 @simCase(
 	domains = (),
@@ -83,10 +83,10 @@ def basicJTAGOperations(sim: Simulator, dut: JTAGController):
 		yield from returnToIdle()
 		# Wait a bit
 		yield Delay(4 / 10e6)
-		# Switch to the bypass state and check the instruction shifted out matches the ID instruction
+		# Switch to the bypass instruction and check the instruction shifted out matches the ID instruction
 		yield from shiftIR()
-		ir = yield from transfer(dataIn = 0xf, cycles = 4)
-		assert ir == 0x3, f'JTAG IR was {ir:x}, expecting 3'
+		ir = yield from transfer(dataIn = JTAGInstruction.bypass, cycles = 4)
+		assert ir == JTAGInstruction.idCode, f'JTAG IR was {ir:x}, expecting {JTAGInstruction.idCode:x}'
 		yield from returnToIdle()
 		# Wait a bit
 		yield Delay(4 / 10e6)
@@ -95,6 +95,33 @@ def basicJTAGOperations(sim: Simulator, dut: JTAGController):
 		bypass = yield from transfer(dataIn = 0x5, cycles = 3)
 		assert bypass == 0x2, f'Read {bypass:x} in BYPASS mode, expecting 2'
 		yield from returnToIdle()
+		# Wait a bit
+		yield Delay(4 / 10e6)
+		# Switch to the PDI instruction and check the instruction shifted out matches the bypass
+		yield from shiftIR()
+		ir = yield from transfer(dataIn = JTAGInstruction.pdi, cycles = 4)
+		assert ir == JTAGInstruction.bypass, f'JTAG IR was {ir:x}, expecting {JTAGInstruction.bypass:x}'
+		yield from returnToIdle()
+		# Wait a bit
+		yield Delay(4 / 10e6)
+		# Set up a PDI empty byte response
+		yield dut.pdiDataOut.eq(0x1eb)
+		# Switch into PDI mode and shift in a test value of all 1's
+		yield from shiftDR()
+		pdi = yield from transfer(dataIn = 0x1ff, cycles = 9)
+		assert pdi == 0x1eb, f'JTAG-PDI response was {pdi:03x}, was expecting 1eb'
+		yield from returnToIdle()
+		pdi = yield dut.pdiDataIn
+		assert pdi == 0x1ff, f'Internal JTAG-PDI request value was {pdi:03x}, was expecting 1ff'
+		# Set up an all 0 PDI response
+		yield dut.pdiDataOut.eq(0x000)
+		# Switch into PDI mode and shift in a test value to check and ensure nibble order
+		yield from shiftDR()
+		pdi = yield from transfer(dataIn = 0x012, cycles = 9)
+		assert pdi == 0x000, f'JTAG-PDI response was {pdi:03x}, was expecting 000'
+		yield from returnToIdle()
+		pdi = yield dut.pdiDataIn
+		assert pdi == 0x012, f'Internal JTAG-PDI request value was {pdi:03x}, was expecting 012'
 		# Wait a cycle
 		yield Delay(1 / 10e6)
 	sim.add_process(domainJTAG)
