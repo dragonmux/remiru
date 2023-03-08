@@ -7,9 +7,9 @@ __all__ = (
 	'PDIInterface',
 )
 
-PDI_BREAK_BYTE = Const(0xbb1, 9)
-PDI_DELAY_BYTE = Const(0xdb1, 9)
-PDI_EMPTY_BYTE = Const(0xeb1, 9)
+PDI_BREAK_BYTE = Const(0x1bb, 9)
+PDI_DELAY_BYTE = Const(0x1db, 9)
+PDI_EMPTY_BYTE = Const(0x1eb, 9)
 
 class PDIInterface(Elaboratable):
 	def __init__(self):
@@ -60,7 +60,7 @@ class PDIInterface(Elaboratable):
 			pdiResponse[0:8].eq(self.pdiDataOut),
 			# Compute its parity
 			pdiResponse[8].eq(self.pdiDataOut.xor()),
-			# Connect up the response acknowledgement signals thorugh their CDC sync
+			# Connect up the response acknowledgement signals through their CDC sync
 			responseAckSync.i.eq(responseAck),
 			self.pdiDoneAck.eq(responseAckSync.o),
 		]
@@ -71,14 +71,16 @@ class PDIInterface(Elaboratable):
 		# If during reception the PDI controller sees invalid parity for the previous request,
 		# then a PDI "Break Byte" will be generated instead indicating the parity error.
 		with m.If(self.jtagNeedsResponse):
-			m.d.sync += useRequest.eq(~awaitingResponse)
-			with m.If(haveResponse):
-				m.d.comb += self.jtagDataOut.eq(jtagResponse)
-				m.d.comb += responseAck.eq(1)
+			m.d.jtag += useRequest.eq(~awaitingResponse)
+			with m.If(parityError):
+				m.d.comb += self.jtagDataOut.eq(PDI_BREAK_BYTE)
 			with m.Elif(awaitingResponse):
 				m.d.comb += self.jtagDataOut.eq(PDI_DELAY_BYTE)
-			with m.Elif(parityError):
-				m.d.comb += self.jtagDataOut.eq(PDI_BREAK_BYTE)
+			with m.Elif(haveResponse):
+				m.d.comb += [
+					self.jtagDataOut.eq(jtagResponse),
+					responseAck.eq(1),
+				]
 			with m.Else():
 				m.d.comb += self.jtagDataOut.eq(PDI_EMPTY_BYTE)
 
