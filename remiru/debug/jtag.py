@@ -10,9 +10,9 @@ __all__ = (
 # The JTAG IR is 4 bits long and follows the same instruction allocation
 # as a real AVR part to maintian compatibility with them
 class JTAGInstruction(IntEnum):
-	idCode = 3
-	pdi = 7
-	bypass = 15
+	idCode = 0x3
+	pdi = 0x7
+	bypass = 0xf
 
 class JTAGController(Elaboratable):
 	def __init__(self, *, jtagIDCode: int):
