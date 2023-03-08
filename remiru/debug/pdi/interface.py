@@ -1,7 +1,8 @@
 # SPDX-License-Identifier: BSD-3-Clause
 from torii import Elaboratable, Module, Signal, Const
 from torii.build import Platform
-from torii.lib.cdc import FFSynchronizer, PulseSynchronizer
+from torii.lib.cdc import FFSynchronizer
+from ...cdc import PulseSynchroniser
 
 __all__ = (
 	'PDIInterface',
@@ -40,7 +41,8 @@ class PDIInterface(Elaboratable):
 		pdiResponse = Signal(9)
 		jtagResponse = Signal(9)
 
-		responseAckSync = PulseSynchronizer(i_domain = 'jtag', o_domain = 'sync')
+		responseAckSync = PulseSynchroniser(iDomain = 'jtag', oDomain = 'sync')
+		nextReadySync = PulseSynchroniser(iDomain = 'jtag', oDomain = 'sync')
 
 		# NB: The JTAG controller PDI signals are on the JTAG clock domain and
 		# must be FFSynchronizer'd over to the main CPU clock domain for the
@@ -50,7 +52,7 @@ class PDIInterface(Elaboratable):
 			FFSynchronizer(self.pdiParityError, parityError, o_domain = 'jtag'),
 			FFSynchronizer(self.pdiDone, haveResponse, o_domain = 'jtag'),
 			responseAckSync,
-			FFSynchronizer(nextReady, self.pdiNextReady, o_domain = 'sync'),
+			nextReadySync,
 			FFSynchronizer(self.jtagDataIn, self.pdiDataIn, o_domain = 'sync'),
 			FFSynchronizer(pdiResponse, jtagResponse, o_domain = 'jtag'),
 		]
@@ -63,6 +65,9 @@ class PDIInterface(Elaboratable):
 			# Connect up the response acknowledgement signals through their CDC sync
 			responseAckSync.i.eq(responseAck),
 			self.pdiDoneAck.eq(responseAckSync.o),
+			# Connect up the next ready signals through their CDC sync
+			nextReadySync.i.eq(nextReady),
+			self.pdiNextReady.eq(nextReadySync.o),
 		]
 
 		# If we have a response when the JTAG machinary asks for one, then we emit it, invalidating it.
