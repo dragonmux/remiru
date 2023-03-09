@@ -35,6 +35,8 @@ class PDIInterface(Elaboratable):
 		nextReady = Signal()
 		useRequest = Signal()
 		awaitingResponse = Signal()
+		awaitingReg = Signal()
+		busy = Signal()
 		parityError = Signal()
 		haveResponse = Signal()
 		responseAck = Signal()
@@ -70,6 +72,15 @@ class PDIInterface(Elaboratable):
 			self.pdiNextReady.eq(nextReadySync.o),
 		]
 
+		# If we have a request come in to use, immediately mark the PDI controller busy
+		with m.If(nextReady):
+			m.d.jtag += busy.eq(1)
+		# If we just got done waiting for a response, unmark the controller busy
+		with m.Elif(haveResponse | (awaitingReg & ~awaitingResponse)):
+			m.d.jtag += busy.eq(0)
+		# Register awaitingResponse so we can detect the falling edge
+		m.d.jtag += awaitingReg.eq(awaitingResponse)
+
 		# If we have a response when the JTAG machinary asks for one, then we emit it, invalidating it.
 		# Else, if we are awaiting a response then we respond with the PDI "Delay Byte" response till we
 		# get one. Otherwise we must answer with the PDI "Empty Byte" response.
@@ -79,7 +90,7 @@ class PDIInterface(Elaboratable):
 			m.d.jtag += useRequest.eq(~awaitingResponse)
 			with m.If(parityError):
 				m.d.comb += self.jtagDataOut.eq(PDI_BREAK_BYTE)
-			with m.Elif(awaitingResponse):
+			with m.Elif(busy):
 				m.d.comb += self.jtagDataOut.eq(PDI_DELAY_BYTE)
 			with m.Elif(haveResponse):
 				m.d.comb += [
