@@ -68,9 +68,9 @@ def basicJTAGOperations(sim: Simulator, dut: JTAGController):
 			yield dut.tck.eq(0)
 		return dataOut
 
-	# This does the simulation on the sync domain so we have control over the relationship between the
-	# TMS and TDI signals to TCK (whether they're changing faling or rising edge, the spacing between
-	# TCK edges, etc)
+	# This does the simulation on the an unclocked domain so we have control over the relationship
+	# between the TMS and TDI signals to TCK (whether they're changing faling or rising edge, the
+	# spacing between TCK edges, etc)
 	def domainJTAG():
 		# This ensures the controller is definitely reset and idle
 		yield from softReset()
